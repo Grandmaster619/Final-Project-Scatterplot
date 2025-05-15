@@ -39,11 +39,12 @@
 
     /* Basic Legend CSS */
     #legend {
-        margin-top: 20px;
-        padding: 10px;
-        border: 1px solid #eee;
-        border-radius: 5px;
-    }
+    margin-left: 20px;
+    padding: 10px;
+    border: 1px solid #eee;
+    border-radius: 5px;
+    min-width: 120px;
+    } 
     .legend-item {
         display: flex;
         align-items: center;
@@ -66,30 +67,36 @@
 
                   <!-- First Row -->
                   <div style="display: flex; align-items: center; gap: 20px;">
-                    <label for="priceFilter" style="min-width: 120px;">Max Price:</label>
-                    <input type="number" id="priceFilter" step="0.01" placeholder="e.g. 20">
+                    <label for="priceMax" style="min-width: 120px;">Max Price:</label>
+                    <input type="number" id="priceMax" step="0.01" placeholder="e.g. 20">
 
-                    <label for="reviewFilter" style="min-width: 180px;">Max User Reviews:</label>
-                    <input type="number" id="reviewFilter" placeholder="e.g. 5000">
+                    <label for="reviewsMax" style="min-width: 180px;">Max User Reviews:</label>
+                    <input type="number" id="reviewsMax" placeholder="e.g. 5000">
 
-                    <button id="applyFilter" style="min-width": 180px;">Apply Filter</button>
+                    <button id="applyFilter" style="min-width: 180px;">Apply Filter</button>
                   </div>
 
                   <!-- Second Row -->
                   <div style="display: flex; align-items: center; gap: 20px;">
-                    <label for="minPrice" style="min-width: 120px;">Min Price:</label>
-                    <input type="number" id="minPrice" placeholder="e.g. 5">
+                    <label for="priceMin" style="min-width: 120px;">Min Price:</label>
+                    <input type="number" id="priceMin" value="1" placeholder="e.g. 5">
+                    <label for="reviewsMin" style="min-width: 180px;">Min User Reviews:</label>
+                    <input type="number" id="reviewsMin" value="50" placeholder="e.g. 10000">
 
-                    <label for="maxReviews" style="min-width: 180px;">Min User Reviews:</label>
-                    <input type="number" id="maxReviews" placeholder="e.g. 10000">
-
-                    <button id="resetFilter" style="min-width": 180px;">Reset</button>
+                    <button id="resetFilter" style="min-width: 180px;">Reset</button>
                   </div>
-
+                  <!-- Search Box -->
+                  <div style="margin-bottom: 10px;">
+                    <label for="gameSearch">Search Game Title:</label>
+                    <input type="text" id="gameSearch" list="gameTitles" placeholder="Start typing...">
+                    <datalist id="gameTitles"></datalist>
+                  </div>
                 </div>
                   <h4>Steam Games: Price vs. User Reviews</h4>
-                  <svg id="scatterplot" width="800" height="600"></svg>
-                  <div id="legend"></div>
+                  <div style="display: flex; flex-direction: row; gap: 20px; align-items: flex-start;">
+                    <svg id="scatterplot" width="800" height="600"></svg>
+                    <div id="legend"></div>
+                  </div>
                   <div class="tooltip"></div>
                   <div>
                       This scatterplot visualizes the relationship between game prices and ratings.

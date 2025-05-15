@@ -1,232 +1,255 @@
-
 console.log("scatterplot.js loaded");
+
 const svg = d3.select("#scatterplot"),
-        width = +svg.attr("width"),
-        height = +svg.attr("height"),
-        margin = {top: 20, right: 30, bottom: 40, left: 80},
-        innerWidth = width - margin.left - margin.right,
-        innerHeight = height - margin.top - margin.bottom;
+    width = +svg.attr("width"),
+    height = +svg.attr("height"),
+    margin = { top: 20, right: 80, bottom: 50, left: 80 },
+    innerWidth = width - margin.left - margin.right,
+    innerHeight = height - margin.top - margin.bottom;
 
-const g = svg.append("g")
-                .attr("transform", `translate(${margin.left},${margin.top})`);
+const g = svg
+    .append("g")
+    .attr("transform", `translate(${margin.left},${margin.top})`);
 
-const tooltip = d3.select(".tooltip")
-                    .style("position", "absolute")
-                    .style("background", "lightsteelblue")
-                    .style("padding", "5px")
-                    .style("border-radius", "5px")
-                    .style("opacity", 0);
+const tooltip = d3.select(".tooltip");
 
-// Fixed rating order with IDs and names, in the correct order:
+// Fixed rating order and color scale
 const ratingOrder = [
-    { id: 1, name: "Overwhelmingly Positive" },
-    { id: 2, name: "Very Positive" },
-    { id: 3, name: "Positive" },
-    { id: 4, name: "Mostly Positive" },
-    { id: 5, name: "Mixed" },
-    { id: 6, name: "Mostly Negative" },
-    { id: 7, name: "Negative" },
-    { id: 8, name: "Very Negative" },
-    { id: 9, name: "Overwhelmingly Negative" }
+    "Overwhelmingly Positive",
+    "Very Positive",
+    "Positive",
+    "Mostly Positive",
+    "Mixed",
+    "Mostly Negative",
+    "Negative",
+    "Very Negative",
+    "Overwhelmingly Negative",
 ];
 
-d3.json("/data").then(data => {
-    //data = data.filter(d => d.price_original > 0);
+const colorScale = d3
+    .scaleOrdinal()
+    .domain(ratingOrder)
+    .range(d3.schemeCategory10);
 
-    // Parse data
-    data.forEach(d => {
-        d.price_original = +d.price_original;
-        d.user_reviews = +d.user_reviews;
+let xScale, yScale;
+let originalData = [];
+let filteredData = [];
 
-    });
+function createScales(data) {
+    xScale = d3
+        .scaleLinear()
+        .domain(d3.extent(data, (d) => d.price_original))
+        .range([0, innerWidth])
+        .nice();
 
-    // Scales
-    const xScale = d3.scaleLinear()
-                        .domain(d3.extent(data, d => d.price_original))
-                        .range([0, innerWidth])
-                        .nice();
+    yScale = d3
+        .scaleLinear()
+        .domain(d3.extent(data, (d) => d.user_reviews))
+        .range([innerHeight, 0])
+        .nice();
+}
 
-    const yScale = d3.scaleLinear()
-                        .domain(d3.extent(data, d => d.user_reviews))
-                        .range([innerHeight, 0])
-                        .nice();
+function renderAxes() {
+    // Create empty axis groups (we'll move and update them later)
+    g.append("g").attr("class", "x-axis");
+    g.append("g").attr("class", "y-axis");
 
-    const colorScale = d3.scaleOrdinal()
-                        .domain(ratingOrder.map(d => d.name)) // consistent order
-                        .range(d3.schemeCategory10); // maps consistently
-
-    let originalData = data; // Save unfiltered data
-    let filteredData = [...originalData]; // Start with full dataset
-
-    function updateScatterplot(dataToPlot) {
-        const circles = g.selectAll("circle")
-            .data(dataToPlot, d => d.title); // Use a key function for efficient updates
-
-        circles.enter().append("circle")
-            .attr("r", 5)
-            .attr("fill", d => colorScale(d.rating_name))
-            .merge(circles)
-            .attr("cx", d => xScale(d.price_original))
-            .attr("cy", d => yScale(d.user_reviews))
-            .on("mouseover", (event, d) => {
-                tooltip.transition().duration(200).style("opacity", 0.9);
-                tooltip.html(`Title: ${d.title}<br>Price: $${d.price_original}<br>User Reviews: ${d.user_reviews}<br>Rating: ${d.rating_name}<br>Positive Ratio: ${d.positive_ratio}`)
-                    .style("left", (event.pageX + 10) + "px")
-                    .style("top", (event.pageY - 28) + "px");
-            })
-            .on("mouseout", () => {
-                tooltip.transition().duration(500).style("opacity", 0);
-            });
-
-        circles.exit().remove();
-    }
-
-    // Initial render
-    updateScatterplot(filteredData);
-
-    document.getElementById("applyFilter").addEventListener("click", () => {
-        const maxPrice = parseFloat(document.getElementById("priceFilter").value);
-        const minPrice = parseFloat(document.getElementById("minPrice").value);
-        const minReviews = parseFloat(document.getElementById("reviewFilter").value);
-        const maxReviews = parseFloat(document.getElementById("maxReviews").value);
-
-        filteredData = originalData.filter(d => {
-            const priceHighOk = isNaN(maxPrice) || d.price_original <= maxPrice;
-            const priceLowOk = isNaN(minPrice) || d.price_original >= minPrice;
-            const reviewHighOk = isNaN(maxReviews) || d.user_reviews <= maxReviews;
-            const reviewLowOk = isNaN(minReviews) || d.user_reviews >= minReviews;
-
-            return priceHighOk && priceLowOk && reviewHighOk && reviewLowOk;
-        });
-
-        updateScatterplot(filteredData);
-    });
-
-    document.getElementById("resetFilter").addEventListener("click", () => {
-        document.getElementById("priceFilter").value = '';
-        document.getElementById("minPrice").value = '';
-        document.getElementById("reviewFilter").value = '';
-        document.getElementById("maxReviews").value = '';
-        filteredData = [...originalData];
-        updateScatterplot(filteredData);
-    });
-
-    const zoom = d3.zoom()
-    .scaleExtent([0.1, 20]) // Min and max zoom scale
-    .translateExtent([
-        [-margin.left, -margin.top],                   // top-left limit of panning
-        [innerWidth + margin.right, innerHeight + margin.bottom]  // bottom-right limit of panning
-    ])
-    .on('zoom', zoomed);
-
-    // Attach zoom behavior to SVG
-    svg.call(zoom);
-
-    function zoomed(event) {
-        // Disable pointer events for performance
-        svg.style("pointer-events", "none");
-
-        requestAnimationFrame(() => {
-            // event.transform has {x, y, k} for pan and zoom scale
-            const transform = event.transform;
-
-            // Create new scales based on transform
-            const newXScale = transform.rescaleX(xScale);
-            const newYScale = transform.rescaleY(yScale);
-
-            // Update axes
-            //g.select(".x-axis").call(d3.axisBottom(newXScale));
-            //g.select(".y-axis").call(d3.axisLeft(newYScale));
-            // Update axes
-            g.select(".x-axis")
-                .attr("transform", `translate(0,${newYScale(0)})`)
-                .call(d3.axisBottom(newXScale));
-
-            g.select(".y-axis")
-                .attr("transform", `translate(${newXScale(0)},0)`)
-                .call(d3.axisLeft(newYScale));
-
-            // Update points position
-            g.selectAll("circle")
-                .data(filteredData, d => d.title)
-                .attr("cx", d => newXScale(d.price_original))
-                .attr("cy", d => newYScale(d.user_reviews));  // or user_reviews if you use that
-
-            // Re-enable after update
-            svg.style("pointer-events", null);
-        });
-    }
-
-    // Axes
-    g.append("g")
-        .attr("class", "x-axis")
-        .attr("transform", `translate(0,${innerHeight})`)
-        .call(d3.axisBottom(xScale))
-        .append("text")
-        .attr("x", innerWidth / 2)
-        .attr("y", 40)
-        .attr("fill", "black")
+    // Axis labels
+    g.append("text")
+        .attr("class", "x-axis-label")
         .attr("text-anchor", "middle")
+        .attr("fill", "black")
+        .attr("y", 40)
         .text("Price ($)");
 
-    g.append("g")
-        .attr("class", "y-axis")
-        .call(d3.axisLeft(yScale))
-        .append("text")
+    g.append("text")
+        .attr("class", "y-axis-label")
+        .attr("text-anchor", "middle")
+        .attr("fill", "black")
         .attr("transform", "rotate(-90)")
         .attr("x", -innerHeight / 2)
         .attr("y", -60)
-        .attr("fill", "black")
-        .attr("text-anchor", "middle")
         .text("User Reviews");
+}
 
-    // Points
-    g.selectAll("circle")
-        .data(data)
-        .enter().append("circle")
-        .attr("cx", d => xScale(d.price_original))
-        .attr("cy", d => yScale(d.user_reviews))
+function updateAxes(newXScale, newYScale) {
+    const xZero = newYScale(0); // Y position for x-axis at y=0
+    const yZero = newXScale(0); // X position for y-axis at x=0
+
+    g.select(".x-axis")
+        .attr("transform", `translate(0, ${xZero})`)
+        .call(d3.axisBottom(newXScale));
+
+    g.select(".y-axis")
+        .attr("transform", `translate(${yZero}, 0)`)
+        .call(d3.axisLeft(newYScale));
+
+    // Reposition axis labels as well
+    g.select(".x-axis-label")
+        .attr("x", innerWidth / 2)
+        .attr("y", xZero + 40); // relative to x-axis
+
+    g.select(".y-axis-label")
+        .attr("x", -innerHeight / 2)
+        .attr("y", yZero - 60); // relative to y-axis
+}
+
+function updateScatterplot(dataToPlot) {
+    filteredData = dataToPlot;
+
+    const circles = g.selectAll("circle").data(filteredData, (d) => d.title);
+
+    circles
+        .enter()
+        .append("circle")
+        .attr("class", "data-point") // Assign class here
         .attr("r", 5)
-        .attr("fill", d => colorScale(d.rating_name))
+        .attr("fill", (d) => colorScale(d.rating_name))
         .on("mouseover", (event, d) => {
-            tooltip.transition().duration(200).style("opacity", 0.9);
-            tooltip.html(`Title: ${d.title}<br>Price: $${d.price_original}<br>User Reviews: ${d.user_reviews}<br>Rating: ${d.rating_name}<br>Positive Ratio: ${d.positive_ratio}`)
-                .style("left", (event.pageX + 10) + "px")
-                .style("top", (event.pageY - 28) + "px");
+            tooltip
+                .style("opacity", 0.9)
+                .html(
+                    `Title: ${d.title}<br>Price: $${d.price_original}<br>User Reviews: ${d.user_reviews}<br>Rating: ${d.rating_name}<br>Positive Ratio: ${d.positive_ratio}`
+                )
+                .style("left", event.pageX + 10 + "px")
+            .style("top", event.pageY - 28 + "px");
         })
         .on("mouseout", () => {
-            tooltip.transition().duration(500).style("opacity", 0);
-        });
-    
-    // Legend
-    // Get unique rating names from your data:
-    const uniqueRatingNames = new Set(data.map(d => d.rating_name));
+            tooltip.style("opacity", 0);
+        })
+        .merge(circles)
+        .attr("cx", (d) => xScale(d.price_original))
+        .attr("cy", (d) => yScale(d.user_reviews));
 
-    // Filter ratingOrder to only those present in data, preserving order:
-    const sortedRatings = ratingOrder.filter(r => uniqueRatingNames.has(r.name));
+    circles.exit().remove();
+}
 
-    // Now update your color scale domain:
-    colorScale.domain(sortedRatings.map(r => r.name));
+function createLegend(data) {
+    const uniqueRatings = new Set(data.map((d) => d.rating_name));
+    const sortedRatings = ratingOrder;
 
-    // Then generate your legend with sortedRatings:
     const legend = d3.select("#legend");
-    legend.html("");  // Clear previous legend content
+    legend.html("");
 
-    sortedRatings.forEach(rating => {
-        const item = legend.append("div")
-            .style("display", "flex")
-            .style("align-items", "center")
-            .style("margin-bottom", "5px");
-
-        item.append("div")
-            .style("width", "15px")
-            .style("height", "15px")
-            .style("background-color", colorScale(rating.name))
-            .style("margin-right", "5px");
-
-        item.append("span").text(rating.name);
+    sortedRatings.forEach((rating) => {
+        const item = legend
+            .append("div")
+            .attr("class", "legend-item")
+            .style("user-select", "none")
+            .style("opacity", uniqueRatings.has(rating) ? 1 : 0.3); // Dim if not in data
+    
+        item
+            .append("div")
+            .attr("class", "legend-color")
+            .style("background-color", colorScale(rating));
+    
+        item.append("span").text(rating);
     });
 
-}).catch(error => {
-    console.error("Error loading data:", error);
+
+}
+
+function fetchDataAndRender(query = "") {
+    d3.json(`/data${query}`)
+        .then((data) => {
+        // Coerce numeric types
+        data.forEach((d) => {
+            d.price_original = +d.price_original;
+            d.user_reviews = +d.user_reviews;
+        });
+
+        originalData = data;
+        createScales(originalData);
+        updateAxes(xScale, yScale); 
+        createLegend(originalData);
+        updateScatterplot(data);
+        highlightSearchedGame();
+
+        // Populate datalist for search
+        const datalist = document.getElementById("gameTitles");
+        datalist.innerHTML = "";
+        data.forEach((d) => {
+        const option = document.createElement("option");
+        option.value = d.title;
+        datalist.appendChild(option);
+        });
+    })
+    .catch((error) => console.error("Error loading data:", error));
+}
+
+// Zoom functionality
+const zoom = d3
+    .zoom()
+    .scaleExtent([0.1, 20])
+    .translateExtent([
+        [-margin.left, -margin.top],
+        [innerWidth + margin.right, innerHeight + margin.bottom],
+    ])
+    .on("zoom", (event) => {
+        const transform = event.transform;
+        const newXScale = transform.rescaleX(xScale);
+        const newYScale = transform.rescaleY(yScale);
+
+        updateAxes(newXScale, newYScale);
+
+        g.selectAll("circle")
+        .attr("cx", (d) => newXScale(d.price_original))
+        .attr("cy", (d) => newYScale(d.user_reviews));
+    });
+
+svg.call(zoom);
+
+// Event listeners
+document.getElementById("applyFilter").addEventListener("click", () => {
+    const priceMin = document.getElementById("priceMin").value || 0;
+    const priceMax = document.getElementById("priceMax").value || 1000;
+    const reviewsMin = document.getElementById("reviewsMin").value || 0;
+    const reviewsMax = document.getElementById("reviewsMax").value || 10000000;
+
+    const query = `?priceMin=${priceMin}&priceMax=${priceMax}&reviewsMin=${reviewsMin}&reviewsMax=${reviewsMax}`;
+
+    fetchDataAndRender(query);
 });
+
+document.getElementById("resetFilter").addEventListener("click", () => {
+    document.getElementById("priceMin").value = 1;
+    document.getElementById("priceMax").value = "";
+    document.getElementById("reviewsMin").value = 50;
+    document.getElementById("reviewsMax").value = "";
+
+    const query = `?priceMin=${priceMin}&priceMax=${priceMax}&reviewsMin=${reviewsMin}&reviewsMax=${reviewsMax}`;
+
+    fetchDataAndRender(query);
+});
+
+document.getElementById("gameSearch").addEventListener("input", highlightSearchedGame);
+
+document.getElementById("gameSearch").addEventListener("change", function () {
+    if (this.value.trim() === "") {
+        g.selectAll("circle")
+            .attr("fill", (d) => colorScale(d.rating_name))
+            .attr("r", 5);
+    }
+});
+
+function highlightSearchedGame() {
+    const searchTerm = document.getElementById("gameSearch").value.trim().toLowerCase();
+
+    if (searchTerm === "")
+        return;
+
+    g.selectAll("circle")
+        .attr("fill", (d) =>
+            d.title.toLowerCase() === searchTerm ? colorScale(d.rating_name) : "#ccc"
+        )
+        .attr("r", (d) => (d.title.toLowerCase() === searchTerm ? 8 : 5))
+    
+        // Bring the matched circle to front
+    g.selectAll("circle")
+    .filter((d) => d.title.toLowerCase() === searchTerm)
+    .raise(); // <-- this brings the matched circle to the front
+}
+
+// Initial load
+renderAxes();
+fetchDataAndRender();
