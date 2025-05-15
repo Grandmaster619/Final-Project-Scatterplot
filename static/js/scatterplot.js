@@ -13,6 +13,8 @@ const g = svg
 
 const tooltip = d3.select(".tooltip");
 
+const disabledRatings = new Set(); // Ratings currently toggled off
+
 // Fixed rating order and color scale
 const ratingOrder = [
     "Overwhelmingly Positive",
@@ -105,6 +107,7 @@ function updateScatterplot(dataToPlot) {
         .attr("class", "data-point") // Assign class here
         .attr("r", 5)
         .attr("fill", (d) => colorScale(d.rating_name))
+        .attr("opacity", (d) => (disabledRatings.has(d.rating_name) ? 0.3 : 1))
         .on("mouseover", (event, d) => {
             tooltip
                 .style("opacity", 0.9)
@@ -118,8 +121,16 @@ function updateScatterplot(dataToPlot) {
             tooltip.style("opacity", 0);
         })
         .merge(circles)
-        .attr("cx", (d) => xScale(d.price_original))
-        .attr("cy", (d) => yScale(d.user_reviews));
+            .attr("cx", (d) => xScale(d.price_original))
+            .attr("cy", (d) => yScale(d.user_reviews))
+            .attr("fill", (d) =>
+                disabledRatings.has(d.rating_name)
+                    ? "#ccc"
+                    : colorScale(d.rating_name)
+            )
+            .attr("opacity", (d) =>
+                disabledRatings.has(d.rating_name) ? 0.3 : 1
+            );
 
     circles.exit().remove();
 }
@@ -132,21 +143,34 @@ function createLegend(data) {
     legend.html("");
 
     sortedRatings.forEach((rating) => {
+        const isDisabled = disabledRatings.has(rating);
+
         const item = legend
             .append("div")
             .attr("class", "legend-item")
             .style("user-select", "none")
-            .style("opacity", uniqueRatings.has(rating) ? 1 : 0.3); // Dim if not in data
-    
+            .style("cursor", "pointer")
+            .style("opacity", uniqueRatings.has(rating) ? 1 : 0.3)
+            .on("click", () => {
+                if (disabledRatings.has(rating)) {
+                    disabledRatings.delete(rating);
+                } else {
+                    disabledRatings.add(rating);
+                }
+                updateLegendStyles();
+                updatePointColors();
+            });
+
         item
             .append("div")
             .attr("class", "legend-color")
             .style("background-color", colorScale(rating));
-    
-        item.append("span").text(rating);
+
+        item
+            .append("span")
+            .text(rating)
+            .style("text-decoration", isDisabled ? "line-through" : "none");
     });
-
-
 }
 
 function fetchDataAndRender(query = "") {
@@ -162,6 +186,8 @@ function fetchDataAndRender(query = "") {
         createScales(originalData);
         updateAxes(xScale, yScale); 
         createLegend(originalData);
+        updateLegendStyles();
+        updatePointColors();
         updateScatterplot(data);
         highlightSearchedGame();
 
@@ -248,6 +274,31 @@ function highlightSearchedGame() {
     g.selectAll("circle")
     .filter((d) => d.title.toLowerCase() === searchTerm)
     .raise(); // <-- this brings the matched circle to the front
+}
+
+function updateLegendStyles() {
+    d3.selectAll(".legend-item").each(function(_, i) {
+        const rating = ratingOrder[i];
+        const isDisabled = disabledRatings.has(rating);
+        d3.select(this)
+            .select("span")
+            .style("text-decoration", isDisabled ? "line-through" : "none");
+    });
+}
+
+function updatePointColors() {
+    g.selectAll("circle.data-point")
+        .attr("fill", (d) => {
+            return disabledRatings.has(d.rating_name)
+                ? "#ccc" // Greyed out
+                : colorScale(d.rating_name);
+        })
+        .attr("opacity", (d) => (disabledRatings.has(d.rating_name) ? 0.3 : 1))
+        .each(function(d) {
+            if (disabledRatings.has(d.rating_name)) {
+                d3.select(this).lower(); // Move greyed out point to back
+            }
+        });
 }
 
 // Initial load
