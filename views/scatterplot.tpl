@@ -62,6 +62,31 @@
       <div class="row">
           <div class="col-sm-12">
               <div class="well">
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px;">
+
+                  <!-- First Row -->
+                  <div style="display: flex; align-items: center; gap: 20px;">
+                    <label for="priceFilter" style="min-width: 120px;">Max Price:</label>
+                    <input type="number" id="priceFilter" step="0.01" placeholder="e.g. 20">
+
+                    <label for="reviewFilter" style="min-width: 180px;">Max User Reviews:</label>
+                    <input type="number" id="reviewFilter" placeholder="e.g. 5000">
+
+                    <button id="applyFilter" style="min-width": 180px;">Apply Filter</button>
+                  </div>
+
+                  <!-- Second Row -->
+                  <div style="display: flex; align-items: center; gap: 20px;">
+                    <label for="minPrice" style="min-width: 120px;">Min Price:</label>
+                    <input type="number" id="minPrice" placeholder="e.g. 5">
+
+                    <label for="maxReviews" style="min-width: 180px;">Min User Reviews:</label>
+                    <input type="number" id="maxReviews" placeholder="e.g. 10000">
+
+                    <button id="resetFilter" style="min-width": 180px;">Reset</button>
+                  </div>
+
+                </div>
                   <h4>Steam Games: Price vs. User Reviews</h4>
                   <svg id="scatterplot" width="800" height="600"></svg>
                   <div id="legend"></div>
