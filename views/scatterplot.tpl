@@ -25,15 +25,16 @@
 
     /* Basic Tooltip CSS */
     .tooltip {
-      position: absolute; /* Important for positioning next to mouse */
+      position: absolute;
+      z-index: 1000;
       text-align: center;
       padding: 8px;
       font: 12px sans-serif;
       background: lightsteelblue;
       border: 1px solid #ccc;
       border-radius: 8px;
-      pointer-events: none; /* IMPORTANT: Prevents tooltip from blocking mouse events */
-      opacity: 0; /* Initially hidden */
+      pointer-events: none;
+      opacity: 0;
       transition: opacity 0.2s;
     }
 
@@ -56,7 +57,29 @@
         margin-right: 8px;
         border: 1px solid #777;
     }
-  </style>
+
+    /* New rules for scatterplot clipping */
+    #scatterplot {
+        overflow: visible;
+    }
+    .points-group circle {
+        vector-effect: non-scaling-stroke;
+    }
+    #scatterplot defs clipPath rect {
+        vector-effect: non-scaling-stroke;
+    }
+    #scatterplot {
+        overflow: visible;
+    }
+
+    .points-group {
+        transform-origin: 0 0;
+    }
+
+    .data-point {
+        vector-effect: non-scaling-stroke;
+    }
+</style>
 </head>
 <body>
     <div class="container-fluid">
@@ -67,21 +90,20 @@
 
                   <!-- First Row -->
                   <div style="display: flex; align-items: center; gap: 20px;">
-                    <label for="priceMax" style="min-width: 120px;">Max Price:</label>
-                    <input type="number" id="priceMax" step="0.01" placeholder="e.g. 20">
-
-                    <label for="reviewsMax" style="min-width: 180px;">Max User Reviews:</label>
-                    <input type="number" id="reviewsMax" placeholder="e.g. 5000">
+                    <label for="priceMin" style="min-width: 120px;">Min Price:</label>
+                    <input type="number" id="priceMin" value="0" placeholder="e.g. 5">
+                    <label for="reviewsMin" style="min-width: 180px;">Min User Reviews:</label>
+                    <input type="number" id="reviewsMin" value="30" placeholder="e.g. 10000">
 
                     <button id="applyFilter" style="min-width: 180px;">Apply Filter</button>
                   </div>
 
                   <!-- Second Row -->
                   <div style="display: flex; align-items: center; gap: 20px;">
-                    <label for="priceMin" style="min-width: 120px;">Min Price:</label>
-                    <input type="number" id="priceMin" value="1" placeholder="e.g. 5">
-                    <label for="reviewsMin" style="min-width: 180px;">Min User Reviews:</label>
-                    <input type="number" id="reviewsMin" value="50" placeholder="e.g. 10000">
+                    <label for="priceMax" style="min-width: 120px;">Max Price:</label>
+                    <input type="number" id="priceMax" step="0.01" placeholder="e.g. 20">
+                    <label for="reviewsMax" style="min-width: 180px;">Max User Reviews:</label>
+                    <input type="number" id="reviewsMax" placeholder="e.g. 5000">
 
                     <button id="resetFilter" style="min-width: 180px;">Reset</button>
                   </div>
@@ -94,7 +116,7 @@
                 </div>
                   <h4>Steam Games: Price vs. User Reviews</h4>
                   <div style="display: flex; flex-direction: row; gap: 20px; align-items: flex-start;">
-                    <svg id="scatterplot" width="800" height="600"></svg>
+                    <svg id="scatterplot" width="1000" height="600"></svg>
                     <div id="legend"></div>
                   </div>
                   <div class="tooltip"></div>

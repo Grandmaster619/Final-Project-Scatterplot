@@ -3,13 +3,33 @@ console.log("scatterplot.js loaded");
 const svg = d3.select("#scatterplot"),
     width = +svg.attr("width"),
     height = +svg.attr("height"),
-    margin = { top: 20, right: 80, bottom: 50, left: 80 },
+    margin = { top: 20, right: 60, bottom: 50, left: 80 },
     innerWidth = width - margin.left - margin.right,
     innerHeight = height - margin.top - margin.bottom;
 
-const g = svg
-    .append("g")
+// Append defs and clipPath for plotting area clipping
+const clipId = "plot-area-clip";
+svg.append("defs")
+    .append("clipPath")
+    .attr("id", clipId)
+    .append("rect")
+    .attr("x", 0)
+    .attr("y", 0)
+    .attr("width", innerWidth)
+    .attr("height", innerHeight);
+
+// Main container group translated by margins
+const g = svg.append("g")
     .attr("transform", `translate(${margin.left},${margin.top})`);
+
+// Group for points with clipping applied
+const pointsGroup = g.append("g")
+    .attr("clip-path", `url(#${clipId})`)
+    .attr("class", "points-group");
+
+
+// Group for axes on top (no clipping)
+const axesGroup = g.append("g").attr("class", "axes-group");
 
 const tooltip = d3.select(".tooltip");
 
@@ -36,35 +56,40 @@ const colorScale = d3
 let xScale, yScale;
 let originalData = [];
 let filteredData = [];
+let currentTransform = d3.zoomIdentity;
 
 function createScales(data) {
-    xScale = d3
-        .scaleLinear()
-        .domain(d3.extent(data, (d) => d.price_original))
+    const xExtent = d3.extent(data, (d) => d.price_original);
+    const yExtent = d3.extent(data, (d) => d.user_reviews);
+
+    const xPadding = (xExtent[1] - xExtent[0]) * 0.1; // 10% padding
+    const yPadding = (yExtent[1] - yExtent[0]) * 0.1;
+
+    xScale = d3.scaleLinear()
+        .domain([xExtent[0] - xPadding, xExtent[1] + xPadding])
         .range([0, innerWidth])
         .nice();
 
-    yScale = d3
-        .scaleLinear()
-        .domain(d3.extent(data, (d) => d.user_reviews))
+    yScale = d3.scaleLinear()
+        .domain([yExtent[0] - yPadding, yExtent[1] + yPadding])
         .range([innerHeight, 0])
         .nice();
 }
 
 function renderAxes() {
     // Create empty axis groups (we'll move and update them later)
-    g.append("g").attr("class", "x-axis");
-    g.append("g").attr("class", "y-axis");
+    axesGroup.append("g").attr("class", "x-axis");
+    axesGroup.append("g").attr("class", "y-axis");
 
     // Axis labels
-    g.append("text")
+    axesGroup.append("text")
         .attr("class", "x-axis-label")
         .attr("text-anchor", "middle")
         .attr("fill", "black")
         .attr("y", 40)
         .text("Price ($)");
 
-    g.append("text")
+    axesGroup.append("text")
         .attr("class", "y-axis-label")
         .attr("text-anchor", "middle")
         .attr("fill", "black")
@@ -75,62 +100,72 @@ function renderAxes() {
 }
 
 function updateAxes(newXScale, newYScale) {
-    const xZero = newYScale(0); // Y position for x-axis at y=0
-    const yZero = newXScale(0); // X position for y-axis at x=0
+    // Original positions of axes based on zero in data coordinates
+    const xZero = newYScale(0); // Y position for x-axis
+    const yZero = newXScale(0); // X position for y-axis
 
-    g.select(".x-axis")
-        .attr("transform", `translate(0, ${xZero})`)
+    // Clamp positions so axes stay within the plot area
+    const clampedXZero = Math.min(Math.max(xZero, 0), innerHeight);
+    const clampedYZero = Math.min(Math.max(yZero, 0), innerWidth);
+
+    // Update axes with clamped positions
+    axesGroup.select(".x-axis")
+        .attr("transform", `translate(0, ${clampedXZero})`)
         .call(d3.axisBottom(newXScale));
 
-    g.select(".y-axis")
-        .attr("transform", `translate(${yZero}, 0)`)
+    axesGroup.select(".y-axis")
+        .attr("transform", `translate(${clampedYZero}, 0)`)
         .call(d3.axisLeft(newYScale));
 
-    // Reposition axis labels as well
-    g.select(".x-axis-label")
+    // Reposition axis labels accordingly
+    axesGroup.select(".x-axis-label")
         .attr("x", innerWidth / 2)
-        .attr("y", xZero + 40); // relative to x-axis
+        .attr("y", clampedXZero + 40); // below x-axis
 
-    g.select(".y-axis-label")
+    axesGroup.select(".y-axis-label")
         .attr("x", -innerHeight / 2)
-        .attr("y", yZero - 60); // relative to y-axis
+        .attr("y", clampedYZero - 60); // left of y-axis
 }
 
 function updateScatterplot(dataToPlot) {
     filteredData = dataToPlot;
 
-    const circles = g.selectAll("circle").data(filteredData, (d) => d.title);
+    const circles = pointsGroup.selectAll("circle").data(filteredData, (d) => d.title);
 
     circles
         .enter()
         .append("circle")
         .attr("class", "data-point") // Assign class here
-        .attr("r", 5)
-        .attr("fill", (d) => colorScale(d.rating_name))
-        .attr("opacity", (d) => (disabledRatings.has(d.rating_name) ? 0.3 : 1))
+        .attr("r", baseRadius * scaleFactor)
         .on("mouseover", (event, d) => {
             tooltip
-                .style("opacity", 0.9)
-                .html(
-                    `Title: ${d.title}<br>Price: $${d.price_original}<br>User Reviews: ${d.user_reviews}<br>Rating: ${d.rating_name}<br>Positive Ratio: ${d.positive_ratio}`
-                )
-                .style("left", event.pageX + 10 + "px")
-            .style("top", event.pageY - 28 + "px");
+                .style("opacity", 0.95)
+                .html(`
+                    <strong>${d.title}</strong><br><br>
+                    <b>Date Released:</b> ${d.date_release}<br> 
+                    <b>Price:</b> $${d.price_original}<br>
+                    <b>User Reviews:</b> ${d.user_reviews}<br>
+                    <b>Rating:</b> ${d.rating_name}<br>
+                    <b>Positive Ratio:</b> ${(d.positive_ratio).toFixed(1)}%
+                `)
+                .style("left", event.pageX + 15 + "px")
+                .style("top", event.pageY - 28 + "px");
         })
         .on("mouseout", () => {
             tooltip.style("opacity", 0);
         })
         .merge(circles)
-            .attr("cx", (d) => xScale(d.price_original))
-            .attr("cy", (d) => yScale(d.user_reviews))
-            .attr("fill", (d) =>
-                disabledRatings.has(d.rating_name)
-                    ? "#ccc"
-                    : colorScale(d.rating_name)
-            )
-            .attr("opacity", (d) =>
-                disabledRatings.has(d.rating_name) ? 0.3 : 1
-            );
+        .attr("cx", (d) => currentTransform.applyX(xScale(d.price_original)))
+        .attr("cy", (d) => currentTransform.applyY(yScale(d.user_reviews)))
+        .attr("fill", (d) =>
+            disabledRatings.has(d.rating_name)
+                ? "#ccc"
+                : colorScale(d.rating_name)
+        )
+        .attr("opacity", (d) =>
+            disabledRatings.has(d.rating_name) ? 0.3 : 1
+        )
+        .attr("r", baseRadius * scaleFactor)
 
     circles.exit().remove();
 }
@@ -158,7 +193,7 @@ function createLegend(data) {
                     disabledRatings.add(rating);
                 }
                 updateLegendStyles();
-                updatePointColors();
+                updatePointColors(rating);
             });
 
         item
@@ -184,12 +219,21 @@ function fetchDataAndRender(query = "") {
 
         originalData = data;
         createScales(originalData);
+        
+         // Reset zoom state
+        const tempTransform = currentTransform;
+        currentTransform = d3.zoomIdentity;
+        svg.call(zoom.transform, currentTransform);
+
         updateAxes(xScale, yScale); 
         createLegend(originalData);
         updateLegendStyles();
         updatePointColors();
         updateScatterplot(data);
         highlightSearchedGame();
+
+        currentTransform = tempTransform;
+        svg.call(zoom.transform, currentTransform);
 
         // Populate datalist for search
         const datalist = document.getElementById("gameTitles");
@@ -204,24 +248,52 @@ function fetchDataAndRender(query = "") {
 }
 
 // Zoom functionality
-const zoom = d3
-    .zoom()
-    .scaleExtent([0.1, 20])
-    .translateExtent([
-        [-margin.left, -margin.top],
-        [innerWidth + margin.right, innerHeight + margin.bottom],
-    ])
-    .on("zoom", (event) => {
-        const transform = event.transform;
-        const newXScale = transform.rescaleX(xScale);
-        const newYScale = transform.rescaleY(yScale);
+const baseRadius = 4;
 
-        updateAxes(newXScale, newYScale);
+const zoomScaleMilestones = [
+    { maxZoom: 0.5, scale: 1.5 },     // Very zoomed out → bigger points
+    { maxZoom: 1, scale: 1.2 },
+    { maxZoom: 2, scale: 1 },
+    { maxZoom: 4, scale: 0.55 },
+    { maxZoom: 8, scale: 0.32 },
+    { maxZoom: 16, scale: 0.15 },
+    { maxZoom: 32, scale: 0.085 },
+    { maxZoom: 64, scale: 0.05 },
+    { maxZoom: 128, scale: 0.025 },
+    { maxZoom: 256, scale: 0.01 },
+    { maxZoom: 512, scale: 0.005 },
+    { maxZoom: Infinity, scale: 0.002 }, // Deep zooms, small radius
+];
 
-        g.selectAll("circle")
-        .attr("cx", (d) => newXScale(d.price_original))
-        .attr("cy", (d) => newYScale(d.user_reviews));
-    });
+let currentMilestoneIndex = -1; // no milestone selected initially
+let scaleFactor = 1;
+
+const zoomHandler = (event) => {
+    currentTransform = event.transform;
+    pointsGroup.attr("transform", currentTransform);
+
+    const newXScale = currentTransform.rescaleX(xScale);
+    const newYScale = currentTransform.rescaleY(yScale);
+    updateAxes(newXScale, newYScale);
+
+    const currentScale = event.transform.k;
+    const newMilestoneIndex = zoomScaleMilestones.findIndex(m => currentScale <= m.maxZoom);
+
+    if (newMilestoneIndex !== currentMilestoneIndex) {
+        currentMilestoneIndex = newMilestoneIndex;
+
+        scaleFactor = zoomScaleMilestones[currentMilestoneIndex].scale;
+        pointsGroup.selectAll("circle")
+        .attr("r", baseRadius * scaleFactor);
+    }
+
+    //console.log(currentMilestoneIndex);
+};
+
+const zoom = d3.zoom()
+    .scaleExtent([0.5, 1000])
+    .translateExtent([[0, 0], [innerWidth, innerHeight]])
+    .on("zoom", zoomHandler);
 
 svg.call(zoom);
 
@@ -238,67 +310,76 @@ document.getElementById("applyFilter").addEventListener("click", () => {
 });
 
 document.getElementById("resetFilter").addEventListener("click", () => {
-    document.getElementById("priceMin").value = 1;
-    document.getElementById("priceMax").value = "";
-    document.getElementById("reviewsMin").value = 50;
-    document.getElementById("reviewsMax").value = "";
-
-    const query = `?priceMin=${priceMin}&priceMax=${priceMax}&reviewsMin=${reviewsMin}&reviewsMax=${reviewsMax}`;
-
-    fetchDataAndRender(query);
+    location.reload();
 });
 
 document.getElementById("gameSearch").addEventListener("input", highlightSearchedGame);
 
-document.getElementById("gameSearch").addEventListener("change", function () {
-    if (this.value.trim() === "") {
-        g.selectAll("circle")
-            .attr("fill", (d) => colorScale(d.rating_name))
-            .attr("r", 5);
-    }
-});
+document.getElementById("gameSearch").addEventListener("change", searchedGameBlank);
 
 function highlightSearchedGame() {
     const searchTerm = document.getElementById("gameSearch").value.trim().toLowerCase();
+    if (searchTerm === "") return;
 
-    if (searchTerm === "")
-        return;
+    const circles = pointsGroup.selectAll("circle");
+    circles.each(function(d) {
+        const circle = d3.select(this);
+        const isMatch = d.title.toLowerCase() === searchTerm;
+        // Only update if necessary to reduce DOM writes
+        const currentFill = circle.attr("fill");
+        const targetFill = isMatch ? colorScale(d.rating_name) : "#ccc";
+        if (currentFill !== targetFill) circle.attr("fill", targetFill);
 
-    g.selectAll("circle")
-        .attr("fill", (d) =>
-            d.title.toLowerCase() === searchTerm ? colorScale(d.rating_name) : "#ccc"
-        )
-        .attr("r", (d) => (d.title.toLowerCase() === searchTerm ? 8 : 5))
-    
-        // Bring the matched circle to front
-    g.selectAll("circle")
-    .filter((d) => d.title.toLowerCase() === searchTerm)
-    .raise(); // <-- this brings the matched circle to the front
+        const currentRadius = +circle.attr("r");
+        const targetRadius = isMatch ? 6 * scaleFactor : baseRadius * scaleFactor;
+        if (currentRadius !== targetRadius) circle.attr("r", targetRadius);
+    });
+
+    // Raise matched circles only once
+    pointsGroup.selectAll("circle")
+        .filter(d => d.title.toLowerCase() === searchTerm)
+        .raise();
+}
+
+function searchedGameBlank() {
+    if (document.getElementById("gameSearch").value.trim() === "") {
+        pointsGroup.selectAll("circle")
+            .attr("fill", (d) => colorScale(d.rating_name))
+            .attr("r", baseRadius * scaleFactor);
+    }
 }
 
 function updateLegendStyles() {
-    d3.selectAll(".legend-item").each(function(_, i) {
-        const rating = ratingOrder[i];
-        const isDisabled = disabledRatings.has(rating);
-        d3.select(this)
-            .select("span")
-            .style("text-decoration", isDisabled ? "line-through" : "none");
+    d3.selectAll(".legend-item").each(function() {
+        const item = d3.select(this);
+        const ratingText = item.select("span").text();
+        const isDisabled = disabledRatings.has(ratingText);
+        item.style("opacity", isDisabled ? 0.3 : 1);
+        item.select("span").style("text-decoration", isDisabled ? "line-through" : "none");
     });
 }
 
-function updatePointColors() {
-    g.selectAll("circle.data-point")
-        .attr("fill", (d) => {
-            return disabledRatings.has(d.rating_name)
-                ? "#ccc" // Greyed out
-                : colorScale(d.rating_name);
-        })
-        .attr("opacity", (d) => (disabledRatings.has(d.rating_name) ? 0.3 : 1))
-        .each(function(d) {
-            if (disabledRatings.has(d.rating_name)) {
-                d3.select(this).lower(); // Move greyed out point to back
-            }
-        });
+function updatePointColors(toggledRating) {
+    const circles = g.selectAll("circle.data-point");
+
+    // Raise only toggledRating circles once, if any
+    if (toggledRating) {
+        circles.filter(d => d.rating_name === toggledRating).raise();
+    }
+
+    circles.each(function(d) {
+        const circle = d3.select(this);
+        const disabled = disabledRatings.has(d.rating_name);
+        const fill = disabled ? "#ccc" : colorScale(d.rating_name);
+        const opacity = disabled ? 0.3 : 1;
+
+        if (circle.attr("fill") !== fill) circle.attr("fill", fill);
+        if (+circle.attr("opacity") !== opacity) circle.attr("opacity", opacity);
+
+        if (disabled) circle.lower();
+    });
+
+    highlightSearchedGame();
 }
 
 // Initial load

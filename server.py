@@ -1,5 +1,6 @@
 from psycopg import connect
 from bottle import Bottle, template, request, static_file, response
+from datetime import date, datetime
 from decimal import Decimal
 import json
 import logging
@@ -11,17 +12,19 @@ app = Bottle()
 def server_static(filepath):
     return static_file(filepath, root="static")
 
-def convert_decimals(obj):
+def convert_types(obj):
     if isinstance(obj, Decimal):
         return float(obj)
-    raise TypeError
+    elif isinstance(obj, (date, datetime)):
+        return obj.isoformat()  # convert date/datetime to ISO string
+    raise TypeError(f"Type {type(obj)} not serializable")
 
 @app.route("/data")
 def data():
     try:
-        min_price = request.query.get("priceMin", default=1, type=float)
+        min_price = request.query.get("priceMin", default=0, type=float)
         max_price = request.query.get("priceMax", default=1000, type=float)
-        min_reviews = request.query.get("reviewsMin", default=50, type=int)
+        min_reviews = request.query.get("reviewsMin", default=30, type=int)
         max_reviews = request.query.get("reviewsMax", default=10000000, type=int)
 
         conn = connect(
@@ -62,6 +65,7 @@ def data():
             {
                 "app_id": row[0],
                 "title": row[1],
+                "date_release": row[2],
                 "price_original": row[3],
                 "user_reviews": row[4],
                 "rating_name": row[5],
@@ -71,7 +75,7 @@ def data():
         ]
 
         response.content_type = "application/json"
-        return json.dumps(data, default=convert_decimals)
+        return json.dumps(data, default=convert_types)
     except Exception as e:
         logging.error(e)
         response.content_type = "application/json"
